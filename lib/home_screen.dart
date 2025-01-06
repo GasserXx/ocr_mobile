@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:untitled17/theme/color.dart';
 import 'package:untitled17/theme/style.dart';
 import 'package:untitled17/tabs/doc_screen.dart';
@@ -24,7 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
     const RecordsScreen(),
   ];
 
-  final List<String> _titles = ['Scan', 'Doc', 'Records'];
+  final List<String> _titles = ['Scan', '', ''];
 
   void _handleLogout() {
     showDialog(

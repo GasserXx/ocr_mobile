@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:untitled17/Login/login_screen.dart';
+import 'package:untitled17/API/token_service.dart';
+import 'package:untitled17/home_screen.dart'; // Import your home screen
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
@@ -28,11 +30,25 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     _animationController.forward();
 
-    Future.delayed(const Duration(seconds: 3), () {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => LoginScreen()),
-      );
+    // Modified this part to check login status
+    Future.delayed(const Duration(seconds: 3), () async {
+      final token = await TokenService.getToken();
+
+      if (!mounted) return;
+
+      if (token != null) {
+        // User is logged in, navigate to home screen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      } else {
+        // User is not logged in, navigate to login screen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+        );
+      }
     });
   }
 
@@ -45,7 +61,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Converting hex color #034641 to Flutter color
       backgroundColor: const Color(0xFF6DD7B0),
       body: Center(
         child: FadeTransition(

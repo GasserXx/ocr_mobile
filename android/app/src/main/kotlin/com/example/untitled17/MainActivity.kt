@@ -1,6 +1,10 @@
 package com.example.untitled17
 
+import android.content.ContentValues
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -8,6 +12,8 @@ import io.flutter.plugin.common.MethodChannel
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import java.io.File
+import java.io.FileInputStream
+import java.io.IOException
 import org.json.JSONObject
 
 class MainActivity : FlutterActivity() {
@@ -27,6 +33,20 @@ class MainActivity : FlutterActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
+                "saveImageToGallery" -> {
+                    val sourcePath = call.argument<String>("sourcePath")
+                    if (sourcePath != null) {
+                        try {
+                            saveImage(sourcePath)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("SAVE_ERROR", e.message, null)
+                        }
+                    } else {
+                        result.error("INVALID_PATH", "Source path is null", null)
+                    }
+                }
+
                 "scanDocument" -> {
                     try {
                         // Get image bytes from Flutter
@@ -120,11 +140,121 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
+                "detectDocument" -> {
+                    try {
+                        val imageBytes = call.argument<ByteArray>("imageBytes")
+                        if (imageBytes == null) {
+                            result.error("INVALID_DATA", "Image bytes are null", null)
+                            return@setMethodCallHandler
+                        }
+
+                        val directory = File(applicationContext.filesDir, "images")
+                        if (!directory.exists()) {
+                            directory.mkdirs()
+                        }
+
+                        val inputFile = File(directory, "temp_input.jpg")
+                        inputFile.writeBytes(imageBytes)
+
+                        val py = Python.getInstance()
+                        val module = py.getModule("detect")
+
+                        val detectResult = module.callAttr(
+                            "detect_document",
+                            inputFile.absolutePath
+                        ).toString()
+
+                        result.success(detectResult)
+
+                    } catch (e: Exception) {
+                        result.error("DETECT_ERROR", e.message, e.stackTraceToString())
+                    }
+                }
+
+                "cropDocument" -> {
+                    try {
+                        val imageBytes = call.argument<ByteArray>("imageBytes")
+                        val cornersArg = call.argument<List<List<Double>>>("corners")
+
+                        if (imageBytes == null || cornersArg == null) {
+                            result.error("INVALID_DATA", "Missing required parameters", null)
+                            return@setMethodCallHandler
+                        }
+
+                        val directory = File(applicationContext.filesDir, "images")
+                        if (!directory.exists()) {
+                            directory.mkdirs()
+                        }
+
+                        val inputFile = File(directory, "temp_input.jpg")
+                        inputFile.writeBytes(imageBytes)
+
+                        val py = Python.getInstance()
+                        val module = py.getModule("detect")
+
+                        val pyCorners = py.builtins.callAttr("list")
+                        cornersArg.forEach { point ->
+                            val pyPoint = py.builtins.callAttr("list")
+                            point.forEach { coord ->
+                                pyPoint.callAttr("append", coord.toDouble())
+                            }
+                            pyCorners.callAttr("append", pyPoint)
+                        }
+
+                        val cropResult = module.callAttr(
+                            "crop_document",
+                            inputFile.absolutePath,
+                            pyCorners
+                        ).toString()
+
+                        if (cropResult.startsWith("Error:")) {
+                            result.error("CROP_ERROR", cropResult, null)
+                        } else {
+                            result.success(cropResult)
+                        }
+
+                    } catch (e: Exception) {
+                        result.error("CROP_ERROR", e.message, e.stackTraceToString())
+                    }
+                }
+
                 else -> {
                     result.notImplemented()
                 }
             }
         }
+    }
+
+    private fun saveImage(sourcePath: String) {
+        val sourceFile = File(sourcePath)
+        val filename = "scanned_doc_${System.currentTimeMillis()}.jpg"
+
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+        }
+
+        val resolver = context.contentResolver
+        val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        val imageUri = resolver.insert(collection, values)
+
+        imageUri?.let { uri ->
+            resolver.openOutputStream(uri)?.use { os ->
+                FileInputStream(sourceFile).use { input ->
+                    input.copyTo(os)
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            }
+        } ?: throw IOException("Failed to create new MediaStore record.")
     }
 
     private fun cleanupTempFiles() {

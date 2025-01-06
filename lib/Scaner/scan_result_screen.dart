@@ -1,4 +1,7 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,6 +12,10 @@ import 'dart:io';
 import 'package:untitled17/theme/color.dart';
 import 'package:untitled17/theme/style.dart';
 import 'package:untitled17/Scaner/corner_editor.dart';
+import 'package:untitled17/API/api_service.dart';
+import 'package:untitled17/API/token_service.dart';
+import 'package:untitled17/database/database_helper.dart';
+import 'package:untitled17/models/receipt_process.dart';
 
 class ScanResultScreen extends StatefulWidget {
   final String scanType;
@@ -16,8 +23,8 @@ class ScanResultScreen extends StatefulWidget {
   const ScanResultScreen({
     Key? key,
     required this.scanType,
-  }) : super(key: key);
-
+  }) : super(key: key)
+  ;
   @override
   State<ScanResultScreen> createState() => _ScanResultScreenState();
 }
@@ -25,11 +32,19 @@ class ScanResultScreen extends StatefulWidget {
 class _ScanResultScreenState extends State<ScanResultScreen> {
   static const platform = MethodChannel('docscanner_channel');
   File? _imageFile;
-  File? _scannedImage;
+  File? _croppedImage;
   final ImagePicker _picker = ImagePicker();
   bool isProcessing = false;
+  bool _isUploading = false;
   String? _errorMessage;
-  String? _currentScannedPath;
+  String? _currentCroppedPath;
+  List<File> _croppedImages = [];
+
+  @override
+  void initState() {
+    super.initState();
+    print('ScanResultScreen initialized with scanType: ${widget.scanType}');
+  }
 
   @override
   void dispose() {
@@ -38,13 +53,75 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
   }
 
   void _cleanupFiles() {
-    // Clean up any temporary files
-    if (_scannedImage?.existsSync() == true) {
+    if (_croppedImage?.existsSync() == true) {
       try {
-        _scannedImage!.deleteSync();
+        _croppedImage!.deleteSync();
       } catch (e) {
-        print('Error disposing scanned image: $e');
+        print('Error disposing cropped image: $e');
       }
+    }
+  }
+
+  Future<void> _uploadImages() async {
+    if (_croppedImages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please add at least one image')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isUploading = true;
+    });
+
+    try {
+      List<String> base64Images = [];
+      for (File image in _croppedImages) {
+        final bytes = await image.readAsBytes();
+        final base64String = base64Encode(bytes);
+        base64Images.add(base64String);
+
+        print('File details:');
+        print('Path: ${image.path}');
+        print('Size: ${bytes.length} bytes');
+        print('Base64 length: ${base64String.length}');
+      }
+
+      print('Uploading with receipt type ID: ${widget.scanType}');
+      print('Number of images: ${base64Images.length}');
+
+      final success = await ApiService.uploadReceiptImages(
+        widget.scanType,
+        base64Images,
+      );
+
+      if (success) {
+        final process = ReceiptProcess(
+          receiptTypeId: widget.scanType,
+          imagePaths: _croppedImages.map((file) => file.path).toList(),
+          dateCreated: DateTime.now(),
+          isSynced: true,
+        );
+
+        final dbHelper = DatabaseHelper();
+        await dbHelper.insertReceiptProcess(process);
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Images uploaded successfully')),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error uploading images: $e')),
+      );
+    } finally {
+      setState(() {
+        _isUploading = false;
+      });
     }
   }
 
@@ -55,13 +132,12 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
         imageQuality: 100,
       );
       if (pickedFile != null) {
-        // Clean up previous files
         _cleanupFiles();
 
         setState(() {
           _imageFile = File(pickedFile.path);
-          _scannedImage = null;
-          _currentScannedPath = null;
+          _croppedImage = null;
+          _currentCroppedPath = null;
           _errorMessage = null;
         });
 
@@ -108,14 +184,14 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
     );
   }
 
-  Future<void> _scanDocument() async {
+  Future<void> _detectAndCropDocument() async {
     if (_imageFile == null) return;
 
     setState(() {
       isProcessing = true;
       _errorMessage = null;
-      _scannedImage = null;
-      _currentScannedPath = null;
+      _croppedImage = null;
+      _currentCroppedPath = null;
     });
 
     try {
@@ -127,35 +203,35 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
 
       print('Processing image of size: ${imageData.lengthInBytes} bytes');
 
-      final String initialResult = await platform.invokeMethod('scanDocument', {
+      final String initialResult = await platform.invokeMethod('detectDocument', {
         'imageBytes': imageData.buffer.asUint8List(),
       });
 
-      print('Initial scan completed');
+      print('Initial detection completed');
 
-      final Map<String, dynamic> scanResult = json.decode(initialResult);
+      final Map<String, dynamic> detectResult = json.decode(initialResult);
 
-      if (scanResult.containsKey('error')) {
-        throw Exception(scanResult['error']);
+      if (detectResult.containsKey('error')) {
+        throw Exception(detectResult['error']);
       }
 
       final adjustedCorners = await showDialog<List<List<double>>>(
         context: context,
         barrierDismissible: false,
         builder: (context) => CornerAdjustmentDialog(
-          imageBase64: scanResult['image'],
-          corners: List<List<double>>.from(scanResult['corners'].map(
+          imageBase64: detectResult['image'],
+          corners: List<List<double>>.from(detectResult['corners'].map(
                 (corner) => List<double>.from(corner),
           )),
-          ratio: scanResult['ratio'].toDouble(),
-          previewSize: scanResult['preview_size'],
+          ratio: detectResult['ratio'].toDouble(),
+          previewSize: detectResult['preview_size'],
         ),
       );
 
       if (adjustedCorners != null) {
         print('Processing with adjusted corners');
 
-        final String finalResult = await platform.invokeMethod('processWithCorners', {
+        final String finalResult = await platform.invokeMethod('cropDocument', {
           'imageBytes': imageData.buffer.asUint8List(),
           'corners': adjustedCorners,
         });
@@ -164,39 +240,35 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
           throw Exception(finalResult.substring(7));
         }
 
-        // Create a new file with a unique name
         final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
         final String newPath = finalResult.replaceAll(
           RegExp(r'\.([^\.]+)$'),
           '_$timestamp.\$1',
         );
 
-        // Copy the processed file to the new path
         final File processedFile = File(finalResult);
         if (processedFile.existsSync()) {
           final File newFile = await processedFile.copy(newPath);
 
           setState(() {
-            _currentScannedPath = newPath;
-            _scannedImage = newFile;
+            _currentCroppedPath = newPath;
+            _croppedImage = newFile;
             _errorMessage = null;
           });
 
-          // Delete the original processed file
           await processedFile.delete();
 
-          print('Scan completed successfully: ${_scannedImage!.path}');
+          print('Crop completed successfully: ${_croppedImage!.path}');
         } else {
           throw Exception('Processed file not found');
         }
       }
-
     } catch (e) {
-      print('Error during scanning: $e');
+      print('Error during detection and cropping: $e');
       setState(() {
         _errorMessage = e.toString();
-        _scannedImage = null;
-        _currentScannedPath = null;
+        _croppedImage = null;
+        _currentCroppedPath = null;
       });
       _showErrorDialog(e.toString());
     } finally {
@@ -221,27 +293,47 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
       ),
     );
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColor.primeColor,
         title: Text(
-          '${widget.scanType} Scanner',
+          '${widget.scanType} Detector',
           style: TextAppStyle.subTittel.copyWith(
             color: Colors.white,
             fontSize: 18.sp,
           ),
         ),
         centerTitle: true,
+        actions: [
+          if (_croppedImages.isNotEmpty)
+            TextButton(
+              onPressed: _isUploading ? null : _uploadImages,
+              child: _isUploading
+                  ? SizedBox(
+                width: 20.w,
+                height: 20.h,
+                child: const CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              )
+                  : Text(
+                'Upload',
+                style: TextAppStyle.subTittel.copyWith(
+                  color: Colors.white,
+                ),
+              ),
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.all(20.w),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Original Image Box
+            // Image picker section
             GestureDetector(
               onTap: _showImageSourceDialog,
               child: SizedBox(
@@ -307,9 +399,9 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
 
             SizedBox(height: 16.h),
 
-            // Scan Button
+            // Detect and crop button
             ElevatedButton(
-              onPressed: _imageFile != null && !isProcessing ? _scanDocument : null,
+              onPressed: _imageFile != null && !isProcessing ? _detectAndCropDocument : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColor.primeColor,
                 padding: EdgeInsets.symmetric(vertical: 12.h),
@@ -327,17 +419,87 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                 ),
               )
                   : Text(
-                _imageFile != null ? 'Scan Image' : 'Select an image first',
+                _imageFile != null ? 'Detect and Crop' : 'Select an image first',
                 style: TextAppStyle.subTittel.copyWith(
                   color: Colors.white,
                 ),
               ),
             ),
 
-            if (_scannedImage != null) ...[
+            // List of cropped images
+            if (_croppedImages.isNotEmpty) ...[
               SizedBox(height: 24.h),
               Text(
-                'Scanned Result:',
+                'Scanned Images (${_croppedImages.length}):',
+                style: TextAppStyle.subTittel.copyWith(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 8.h),
+              SizedBox(
+                height: 120.h,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _croppedImages.length,
+                  itemBuilder: (context, index) {
+                    return Padding(
+                      padding: EdgeInsets.only(right: 8.w),
+                      child: Stack(
+                        children: [
+                          Container(
+                            width: 120.w,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12.r),
+                              border: Border.all(
+                                color: AppColor.primeColor,
+                                width: 1,
+                              ),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12.r),
+                              child: Image.file(
+                                _croppedImages[index],
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            right: 4,
+                            top: 4,
+                            child: InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _croppedImages.removeAt(index);
+                                });
+                              },
+                              child: Container(
+                                padding: EdgeInsets.all(4.w),
+                                decoration: const BoxDecoration(
+                                  color: Colors.red,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.close,
+                                  size: 16.sp,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+
+            // Current cropped image
+            if (_croppedImage != null) ...[
+              SizedBox(height: 24.h),
+              Text(
+                'Current Scan:',
                 style: TextAppStyle.subTittel.copyWith(
                   fontSize: 16.sp,
                   fontWeight: FontWeight.bold,
@@ -356,18 +518,21 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12.r),
                   child: Image.file(
-                    _scannedImage!,
+                    _croppedImage!,
                     fit: BoxFit.contain,
-                    key: ValueKey(_currentScannedPath),
-                    cacheWidth: null,
-                    cacheHeight: null,
+                    key: ValueKey(_currentCroppedPath),
                   ),
                 ),
               ),
               SizedBox(height: 16.h),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(context, _scannedImage);
+                  setState(() {
+                    _croppedImages.add(_croppedImage!);
+                    _imageFile = null;
+                    _croppedImage = null;
+                    _currentCroppedPath = null;
+                  });
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColor.primeColor,
@@ -377,7 +542,7 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
                   ),
                 ),
                 child: Text(
-                  'Confirm',
+                  'Add Image',
                   style: TextAppStyle.subTittel.copyWith(
                     color: Colors.white,
                   ),

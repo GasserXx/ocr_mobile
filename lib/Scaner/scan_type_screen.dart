@@ -1,10 +1,10 @@
-// scan_types_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:untitled17/theme/color.dart';
 import 'package:untitled17/theme/style.dart';
 import 'package:untitled17/API/api_service.dart';
-import 'package:untitled17/API/receipt_type_model.dart';
+import 'package:untitled17/models/receipt_type_model.dart';
+import 'package:untitled17/Login/login_screen.dart';
 import 'scan_result_screen.dart';
 
 class ScanTypeScreen extends StatefulWidget {
@@ -27,6 +27,11 @@ class _ScanTypeScreenState extends State<ScanTypeScreen> {
 
   Future<void> _fetchReceiptTypes() async {
     try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+
       final types = await ApiService.getReceiptTypes();
       setState(() {
         _receiptTypes = types;
@@ -34,21 +39,59 @@ class _ScanTypeScreenState extends State<ScanTypeScreen> {
       });
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = e.toString().replaceAll('Exception:', '').trim();
         _isLoading = false;
       });
     }
   }
 
-  IconData _getIconForType(String typeName) {
-    switch (typeName.toLowerCase()) {
-      case 'qr':
-        return Icons.qr_code_scanner;
-      case 'document':
-        return Icons.document_scanner;
-      default:
-        return Icons.document_scanner;
-    }
+  void _navigateToLogin() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+    );
+  }
+
+  Widget _buildErrorWidget() {
+    final bool isUnauthorized = _error?.contains('Session expired') == true ||
+        _error?.contains('unauthorized') == true ||
+        _error?.contains('401') == true;
+
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(20.w),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              isUnauthorized
+                  ? 'Please login to access this feature'
+                  : _error!,
+              textAlign: TextAlign.center,
+              style: TextAppStyle.subTittel.copyWith(
+                color: Colors.red,
+                fontSize: 14.sp,
+              ),
+            ),
+            SizedBox(height: 16.h),
+            ElevatedButton(
+              onPressed: isUnauthorized ? _navigateToLogin : _fetchReceiptTypes,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColor.primeColor,
+                padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+              ),
+              child: Text(
+                isUnauthorized ? 'Go to Login' : 'Retry',
+                style: TextAppStyle.subTittel.copyWith(
+                  color: Colors.white,
+                  fontSize: 14.sp,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -65,56 +108,64 @@ class _ScanTypeScreenState extends State<ScanTypeScreen> {
         ),
         centerTitle: true,
       ),
-      body: _isLoading
-          ? Center(
-        child: CircularProgressIndicator(
-          color: AppColor.primeColor,
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (_error != null) {
+      return _buildErrorWidget();
+    }
+
+    if (_receiptTypes.isEmpty) {
+      return Center(
+        child: Text(
+          'No receipt types available',
+          style: TextAppStyle.subTittel.copyWith(
+            fontSize: 14.sp,
+          ),
         ),
-      )
-          : _error != null
-          ? Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Error loading receipt types',
-              style: TextAppStyle.subTittel.copyWith(
-                color: Colors.red,
-              ),
-            ),
-            SizedBox(height: 8.h),
-            ElevatedButton(
-              onPressed: _fetchReceiptTypes,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColor.primeColor,
-              ),
-              child: Text(
-                'Retry',
-                style: TextAppStyle.subTittel.copyWith(
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ),
-      )
-          : Padding(
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _fetchReceiptTypes,
+      child: Padding(
         padding: EdgeInsets.all(20.w),
         child: ListView.separated(
           itemCount: _receiptTypes.length,
           separatorBuilder: (context, index) => SizedBox(height: 16.h),
           itemBuilder: (context, index) {
-            final type = _receiptTypes[index];
+            final receiptType = _receiptTypes[index];
             return _buildScanTypeCard(
               context,
-              type.name,
-              _getIconForType(type.name),
+              receiptType.name,
+              _getIconForIndex(index),
                   () {
+                    print('Selected Receipt Type Debug:');
+                    print('receiptTypeId: ${receiptType.receiptTypeId}');
+                    print('name: ${receiptType.name}');
+
+                    if (receiptType.receiptTypeId.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Invalid receipt type ID'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => ScanResultScreen(
-                      scanType: type.name,
+                      scanType: receiptType.receiptTypeId,
                     ),
                   ),
                 );
@@ -124,6 +175,19 @@ class _ScanTypeScreenState extends State<ScanTypeScreen> {
         ),
       ),
     );
+  }
+
+  IconData _getIconForIndex(int index) {
+    switch (index) {
+      case 0:
+        return Icons.qr_code_scanner;
+      case 1:
+        return Icons.document_scanner;
+      case 2:
+        return Icons.barcode_reader;
+      default:
+        return Icons.document_scanner;
+    }
   }
 
   Widget _buildScanTypeCard(

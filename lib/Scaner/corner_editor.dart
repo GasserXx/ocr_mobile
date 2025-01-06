@@ -25,6 +25,7 @@ class _CornerAdjustmentDialogState extends State<CornerAdjustmentDialog> {
   late List<Offset> _corners;
   Size? _imageSize;
   bool _initialized = false;
+  late Image _cachedImage;
 
   @override
   void initState() {
@@ -36,6 +37,12 @@ class _CornerAdjustmentDialogState extends State<CornerAdjustmentDialog> {
         (point[1] as num).toDouble(),
       );
     }).toList();
+    // Cache the image
+    _cachedImage = Image.memory(
+      base64Decode(widget.imageBase64),
+      fit: BoxFit.contain,
+      gaplessPlayback: true, // Prevents flashing during updates
+    );
   }
 
   Size getActualImageDimensions(double containerWidth, double containerHeight) {
@@ -46,11 +53,9 @@ class _CornerAdjustmentDialogState extends State<CornerAdjustmentDialog> {
     double actualHeight;
 
     if (containerAspectRatio > imageAspectRatio) {
-      // Image is height-constrained
       actualHeight = containerHeight;
       actualWidth = containerHeight * imageAspectRatio;
     } else {
-      // Image is width-constrained
       actualWidth = containerWidth;
       actualHeight = containerWidth / imageAspectRatio;
     }
@@ -58,15 +63,20 @@ class _CornerAdjustmentDialogState extends State<CornerAdjustmentDialog> {
     return Size(actualWidth, actualHeight);
   }
 
-  void _updateCorner(int index, Offset delta) {
+  void _updateCorner(int index, Offset delta, BoxConstraints constraints) {
     if (_imageSize == null) return;
 
     setState(() {
+      Size actualSize = getActualImageDimensions(constraints.maxWidth, constraints.maxHeight);
+      double offsetX = (constraints.maxWidth - actualSize.width) / 2;
+      double offsetY = (constraints.maxHeight - actualSize.height) / 2;
+
       Offset newPosition = _corners[index] + delta;
-      // Constrain the corner within the image bounds
+
+      // Constrain the corner within the actual image bounds
       _corners[index] = Offset(
-        newPosition.dx.clamp(0, _imageSize!.width),
-        newPosition.dy.clamp(0, _imageSize!.height),
+        newPosition.dx.clamp(offsetX, offsetX + actualSize.width),
+        newPosition.dy.clamp(offsetY, offsetY + actualSize.height),
       );
     });
   }
@@ -93,17 +103,14 @@ class _CornerAdjustmentDialogState extends State<CornerAdjustmentDialog> {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 if (!_initialized) {
-                  // Get actual image dimensions for initial scaling
                   Size actualSize = getActualImageDimensions(
                       constraints.maxWidth,
                       constraints.maxHeight
                   );
 
-                  // Calculate offsets for centered image
                   double offsetX = (constraints.maxWidth - actualSize.width) / 2;
                   double offsetY = (constraints.maxHeight - actualSize.height) / 2;
 
-                  // Scale corners to fit the actual image size and position
                   _corners = _corners.map((corner) => Offset(
                     (corner.dx * actualSize.width / widget.previewSize['width']) + offsetX,
                     (corner.dy * actualSize.height / widget.previewSize['height']) + offsetY,
@@ -117,28 +124,37 @@ class _CornerAdjustmentDialogState extends State<CornerAdjustmentDialog> {
                 return Stack(
                   fit: StackFit.expand,
                   children: [
-                    Image.memory(
-                      base64Decode(widget.imageBase64),
-                      fit: BoxFit.contain,
-                    ),
+                    // Use cached image
+                    _cachedImage,
                     CustomPaint(
-                      painter: CornerLinesPainter(corners: _corners),
+                      painter: CornerLinesPainter(
+                        corners: _corners,
+                        constraints: constraints,
+                      ),
                     ),
                     ..._corners.asMap().entries.map((entry) {
                       int index = entry.key;
                       Offset corner = entry.value;
                       return Positioned(
-                        left: corner.dx.clamp(15, constraints.maxWidth - 15) - 15,
-                        top: corner.dy.clamp(15, constraints.maxHeight - 15) - 15,
+                        left: corner.dx - 15,
+                        top: corner.dy - 15,
                         child: GestureDetector(
-                          onPanUpdate: (details) => _updateCorner(index, details.delta),
+                          behavior: HitTestBehavior.translucent,
+                          onPanUpdate: (details) => _updateCorner(index, details.delta, constraints),
                           child: Container(
                             width: 30,
                             height: 30,
                             decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.7),
+                              color: Colors.blue.withOpacity(0.7),
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white, width: 2),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 4,
+                                  spreadRadius: 2,
+                                )
+                              ],
                             ),
                             child: Center(
                               child: Text(
@@ -178,7 +194,6 @@ class _CornerAdjustmentDialogState extends State<CornerAdjustmentDialog> {
                     final offsetY = (_imageSize!.height - actualSize.height) / 2;
 
                     final adjustedCorners = _corners.map((corner) {
-                      // Adjust for the actual image position within the container
                       double adjustedX = (corner.dx - offsetX) * (widget.previewSize['width'] / actualSize.width);
                       double adjustedY = (corner.dy - offsetY) * (widget.previewSize['height'] / actualSize.height);
 
@@ -188,7 +203,6 @@ class _CornerAdjustmentDialogState extends State<CornerAdjustmentDialog> {
                       ];
                     }).toList();
 
-                    print('Adjusted corners: $adjustedCorners'); // Debug print
                     Navigator.of(context).pop(adjustedCorners);
                   },
                   child: Text('Confirm'),
@@ -204,19 +218,18 @@ class _CornerAdjustmentDialogState extends State<CornerAdjustmentDialog> {
 
 class CornerLinesPainter extends CustomPainter {
   final List<Offset> corners;
+  final BoxConstraints constraints;
 
-  CornerLinesPainter({required this.corners});
+  CornerLinesPainter({
+    required this.corners,
+    required this.constraints,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.yellow
-      ..strokeWidth = 3.0
-      ..style = PaintingStyle.stroke;
-
-    final shadowPaint = Paint()
-      ..color = Colors.black
-      ..strokeWidth = 5.0
+      ..color = Colors.blue
+      ..strokeWidth = 2.0
       ..style = PaintingStyle.stroke;
 
     final path = Path();
@@ -224,11 +237,22 @@ class CornerLinesPainter extends CustomPainter {
     for (int i = 1; i < corners.length; i++) {
       path.lineTo(corners[i].dx, corners[i].dy);
     }
-    path.lineTo(corners[0].dx, corners[0].dy);
+    path.close();
 
-    // Draw shadow
-    canvas.drawPath(path, shadowPaint);
-    // Draw yellow line
+    // Draw semi-transparent overlay outside the selection
+    final backgroundPath = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+    backgroundPath.addPath(path, Offset.zero);
+
+    canvas.drawPath(
+      backgroundPath,
+      Paint()
+        ..color = Colors.black.withOpacity(0.3)
+        ..style = PaintingStyle.fill
+        ..strokeWidth = 0,
+    );
+
+    // Draw the selection border
     canvas.drawPath(path, paint);
   }
 

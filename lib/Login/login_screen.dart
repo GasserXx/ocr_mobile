@@ -20,6 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _idController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   String? _validateId(String? value) {
     if (value == null || value.isEmpty) {
@@ -114,7 +115,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   hintText: 'Enter your password',
                   controller: _passwordController,
                   validator: _validatePassword,
-                  obscureText: true,
+                  obscureText: _obscurePassword,
+                  onTogglePasswordVisibility: () {
+                    setState(() {
+                      _obscurePassword = !_obscurePassword;
+                    });
+                  },
                 ),
                 SizedBox(height: 20.h),
                 _isLoading
