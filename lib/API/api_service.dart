@@ -7,7 +7,7 @@ import 'package:http_parser/http_parser.dart';
 import 'dart:math' as math;
 
 class ApiService {
-  static const String baseUrl = 'https://invizo-app.koyeb.app';
+  static const String baseUrl = 'http://invizo-app-env.eba-3rc9msxb.us-east-2.elasticbeanstalk.com';
 
   static Future<Map<String, String>> _getAuthHeaders() async {
     final token = await TokenService.getToken();
@@ -40,8 +40,8 @@ class ApiService {
 
       if (response.statusCode == 200) {
         // Save token if it's provided with registration
-        if (responseData['token'] != null) {
-          await TokenService.saveToken(responseData['token']);
+        if (responseData['accessToken'] != null) {
+          await TokenService.saveToken(responseData['accessToken']);
         }
         return responseData;
       } else {
@@ -109,8 +109,8 @@ class ApiService {
         final responseData = json.decode(response.body);
 
         if (response.statusCode == 200) {
-          if (responseData['token'] != null) {
-            await TokenService.saveToken(responseData['token']);
+          if (responseData['accessToken'] != null) {
+            await TokenService.saveToken(responseData['accessToken']);
           }
           return responseData;
         } else {
@@ -220,11 +220,12 @@ class ApiService {
         throw Exception('Session expired. Please login again.');
       } else {
         final responseData = json.decode(response.body);
-        throw Exception(responseData['response'] ?? 'Failed to upload images');
+        final errorMessage = responseData['messageCode'] ?? responseData['response'] ?? 'Failed to upload images';
+        throw Exception(errorMessage);
       }
     } catch (e) {
       print('Error uploading images: $e');
-      throw Exception('Failed to upload images: $e');
+      rethrow;
     }
   }
 

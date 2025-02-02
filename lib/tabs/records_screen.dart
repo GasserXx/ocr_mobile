@@ -21,80 +21,128 @@ class _RecordsScreenState extends State<RecordsScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColor.primeColor,
+        elevation: 0,
         title: Text(
           'Records',
           style: TextAppStyle.subTittel.copyWith(
             color: Colors.white,
-            fontSize: 18.sp,
+            fontSize: 20.sp,
+            fontWeight: FontWeight.w600,
           ),
         ),
         centerTitle: true,
       ),
-      body: FutureBuilder<List<ReceiptProcess>>(
-        future: _dbHelper.getAllReceiptProcesses(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppColor.primeColor.withOpacity(0.1),
+              Colors.white,
+            ],
+          ),
+        ),
+        child: FutureBuilder<List<ReceiptProcess>>(
+          future: _dbHelper.getAllReceiptProcesses(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
+            }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Error loading records',
-                    style: TextAppStyle.subTittel.copyWith(
-                      color: Colors.red,
-                      fontSize: 14.sp,
-                    ),
-                  ),
-                  SizedBox(height: 8.h),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {}); // Refresh the screen
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColor.primeColor,
-                    ),
-                    child: Text(
-                      'Retry',
-                      style: TextAppStyle.subTittel.copyWith(
-                        color: Colors.white,
-                        fontSize: 14.sp,
-                      ),
-                    ),
-                  ),
-                ],
+            if (snapshot.hasError) {
+              return _buildErrorState();
+            }
+
+            final processes = snapshot.data ?? [];
+
+            if (processes.isEmpty) {
+              return _buildEmptyState();
+            }
+
+            return Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+              child: ListView.separated(
+                physics: const BouncingScrollPhysics(),
+                itemCount: processes.length,
+                separatorBuilder: (context, index) => SizedBox(height: 12.h),
+                itemBuilder: (context, index) {
+                  final process = processes[index];
+                  return _buildRecordCard(process);
+                },
               ),
             );
-          }
+          },
+        ),
+      ),
+    );
+  }
 
-          final processes = snapshot.data ?? [];
-
-          if (processes.isEmpty) {
-            return Center(
-              child: Text(
-                'No records found',
-                style: TextAppStyle.subTittel.copyWith(fontSize: 16.sp),
-              ),
-            );
-          }
-
-          return Padding(
-            padding: EdgeInsets.all(16.w),
-            child: ListView.separated(
-              itemCount: processes.length,
-              separatorBuilder: (context, index) => SizedBox(height: 16.h),
-              itemBuilder: (context, index) {
-                final process = processes[index];
-                return _buildRecordCard(process);
-              },
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.receipt_long_outlined,
+            size: 80.sp,
+            color: AppColor.primeColor.withOpacity(0.5),
+          ),
+          SizedBox(height: 16.h),
+          Text(
+            'No Records Found',
+            style: TextAppStyle.subTittel.copyWith(
+              fontSize: 18.sp,
+              color: AppColor.primeColor,
             ),
-          );
-        },
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            'Start by adding some receipts',
+            style: TextAppStyle.subTittel.copyWith(
+              fontSize: 14.sp,
+              color: AppColor.subText,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 60.sp,
+            color: Colors.red,
+          ),
+          SizedBox(height: 16.h),
+          Text(
+            'Error Loading Records',
+            style: TextAppStyle.subTittel.copyWith(
+              color: Colors.red,
+              fontSize: 16.sp,
+            ),
+          ),
+          SizedBox(height: 12.h),
+          ElevatedButton.icon(
+            onPressed: () => setState(() {}),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColor.primeColor,
+              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8.r),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -102,86 +150,90 @@ class _RecordsScreenState extends State<RecordsScreen> {
   Widget _buildRecordCard(ReceiptProcess process) {
     return Card(
       elevation: 2,
+      shadowColor: AppColor.primeColor.withOpacity(0.2),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12.r),
       ),
       child: InkWell(
-        onTap: () {
-          // Navigate to detail view
-          _showRecordDetails(process);
-        },
+        onTap: () => _showRecordDetails(process),
         borderRadius: BorderRadius.circular(12.r),
-        child: Padding(
-          padding: EdgeInsets.all(16.w),
+        child: Container(
+          padding: EdgeInsets.all(12.w),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12.r),
+            border: Border.all(
+              color: AppColor.primeColor.withOpacity(0.1),
+              width: 1,
+            ),
+          ),
           child: Row(
             children: [
-              // Thumbnail
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8.r),
-                child: process.imagePaths.isNotEmpty
-                    ? Image.file(
-                  File(process.imagePaths.first),
-                  width: 60.w,
-                  height: 60.w,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: 60.w,
-                      height: 60.w,
-                      color: Colors.grey[200],
-                      child: Icon(
-                        Icons.image_not_supported,
-                        color: Colors.grey[400],
-                      ),
-                    );
-                  },
-                )
-                    : Container(
-                  width: 60.w,
-                  height: 60.w,
-                  color: Colors.grey[200],
-                  child: Icon(
-                    Icons.image_not_supported,
-                    color: Colors.grey[400],
-                  ),
-                ),
-              ),
-              SizedBox(width: 16.w),
-              // Info
+              _buildThumbnail(process),
+              SizedBox(width: 12.w),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Receipt Type: ${process.receiptTypeId}',
-                      style: TextAppStyle.subMainTittel.copyWith(
-                        fontSize: 14.sp,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Receipt #${process.receiptTypeId}',
+                            style: TextAppStyle.subMainTittel.copyWith(
+                              fontSize: 16.sp,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(width: 8.w),
+                        _buildSyncStatus(process.isSynced),
+                      ],
+                    ),
+                    SizedBox(height: 8.h),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_today,
+                          size: 14.sp,
+                          color: AppColor.subText,
+                        ),
+                        SizedBox(width: 4.w),
+                        Expanded(
+                          child: Text(
+                            _formatDate(process.dateCreated),
+                            style: TextAppStyle.subTittel.copyWith(
+                              fontSize: 12.sp,
+                              color: AppColor.subText,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                     SizedBox(height: 4.h),
-                    Text(
-                      'Date: ${_formatDate(process.dateCreated)}',
-                      style: TextAppStyle.subTittel.copyWith(
-                        fontSize: 12.sp,
-                        color: AppColor.subText,
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      '${process.imagePaths.length} image(s)',
-                      style: TextAppStyle.subTittel.copyWith(
-                        fontSize: 12.sp,
-                        color: AppColor.subText,
-                      ),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.image,
+                          size: 14.sp,
+                          color: AppColor.subText,
+                        ),
+                        SizedBox(width: 4.w),
+                        Expanded(
+                          child: Text(
+                            '${process.imagePaths.length} image(s)',
+                            style: TextAppStyle.subTittel.copyWith(
+                              fontSize: 12.sp,
+                              color: AppColor.subText,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ),
-              // Sync status
-              Icon(
-                process.isSynced ? Icons.cloud_done : Icons.cloud_upload,
-                color: process.isSynced ? Colors.green : Colors.grey,
-                size: 24.sp,
               ),
             ],
           ),
@@ -190,95 +242,220 @@ class _RecordsScreenState extends State<RecordsScreen> {
     );
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute}';
+  Widget _buildSyncStatus(bool isSynced) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 4.h),
+      decoration: BoxDecoration(
+        color: isSynced ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12.r),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isSynced ? Icons.cloud_done : Icons.cloud_upload,
+            color: isSynced ? Colors.green : Colors.grey,
+            size: 12.sp,
+          ),
+          SizedBox(width: 4.w),
+          Text(
+            isSynced ? 'Synced' : 'Pending',
+            style: TextAppStyle.subTittel.copyWith(
+              fontSize: 10.sp,
+              color: isSynced ? Colors.green : Colors.grey,
+            ),
+          ),
+        ],
+      ),
+    );
   }
+
+// For the details bottom sheet, update the _buildDetailItem method:
+  Widget _buildDetailItem(String title, String value, IconData icon, [Color? iconColor]) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 8.h),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 20.sp,
+            color: iconColor ?? AppColor.subText,
+          ),
+          SizedBox(width: 12.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextAppStyle.subTittel.copyWith(
+                    fontSize: 14.sp,
+                    color: AppColor.subText,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                SizedBox(height: 4.h),
+                Text(
+                  value,
+                  style: TextAppStyle.subMainTittel.copyWith(
+                    fontSize: 16.sp,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildThumbnail(ReceiptProcess process) {
+    return Container(
+      width: 70.w,
+      height: 70.w,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8.r),
+        border: Border.all(
+          color: AppColor.primeColor.withOpacity(0.1),
+          width: 1,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8.r),
+        child: process.imagePaths.isNotEmpty
+            ? Image.file(
+          File(process.imagePaths.first),
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) =>
+              _buildPlaceholderImage(),
+        )
+            : _buildPlaceholderImage(),
+      ),
+    );
+  }
+
+  Widget _buildPlaceholderImage() {
+    return Container(
+      color: Colors.grey[100],
+      child: Icon(
+        Icons.receipt,
+        color: Colors.grey[400],
+        size: 30.sp,
+      ),
+    );
+  }
+
 
   void _showRecordDetails(ReceiptProcess process) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (context) {
         return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+          ),
           padding: EdgeInsets.all(16.w),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Container(
+                width: 40.w,
+                height: 4.h,
+                margin: EdgeInsets.only(bottom: 20.h),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2.r),
+                ),
+              ),
               Text(
                 'Receipt Details',
-                style: TextAppStyle.subMainTittel.copyWith(fontSize: 18.sp),
+                style: TextAppStyle.subMainTittel.copyWith(
+                  fontSize: 20.sp,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-              SizedBox(height: 16.h),
+              SizedBox(height: 24.h),
               // Images
               SizedBox(
-                height: 120.h,
+                height: 150.h,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
                   itemCount: process.imagePaths.length,
-                  separatorBuilder: (context, index) => SizedBox(width: 8.w),
+                  separatorBuilder: (context, index) => SizedBox(width: 12.w),
                   itemBuilder: (context, index) {
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(8.r),
-                      child: Image.file(
-                        File(process.imagePaths[index]),
-                        width: 120.w,
-                        height: 120.h,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            width: 120.w,
-                            height: 120.h,
-                            color: Colors.grey[200],
-                            child: Icon(
-                              Icons.image_not_supported,
-                              color: Colors.grey[400],
-                            ),
-                          );
-                        },
+                    return Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12.r),
+                        border: Border.all(
+                          color: AppColor.primeColor.withOpacity(0.1),
+                        ),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12.r),
+                        child: Image.file(
+                          File(process.imagePaths[index]),
+                          width: 150.w,
+                          height: 150.h,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              _buildPlaceholderImage(),
+                        ),
                       ),
                     );
                   },
                 ),
               ),
-              SizedBox(height: 16.h),
+              SizedBox(height: 24.h),
               // Details
-              ListTile(
-                title: Text(
-                  'Receipt Type',
-                  style: TextAppStyle.subTittel,
+              _buildDetailItem(
+                'Receipt ID',
+                process.receiptTypeId,
+                Icons.receipt,
+              ),
+              _buildDetailItem(
+                'Date',
+                _formatDate(process.dateCreated),
+                Icons.calendar_today,
+              ),
+              _buildDetailItem(
+                'Status',
+                process.isSynced ? 'Synced' : 'Not Synced',
+                process.isSynced ? Icons.cloud_done : Icons.cloud_upload,
+                process.isSynced ? Colors.green : Colors.grey,
+              ),
+              SizedBox(height: 24.h),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColor.primeColor,
+                  minimumSize: Size(double.infinity, 50.h),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
                 ),
-                subtitle: Text(
-                  process.receiptTypeId,
-                  style: TextAppStyle.subMainTittel,
+                child: Text(
+                  'Close',
+                  style: TextAppStyle.subTittel.copyWith(
+                    color: Colors.white,
+                    fontSize: 16.sp,
+                  ),
                 ),
               ),
-              ListTile(
-                title: Text(
-                  'Date',
-                  style: TextAppStyle.subTittel,
-                ),
-                subtitle: Text(
-                  _formatDate(process.dateCreated),
-                  style: TextAppStyle.subMainTittel,
-                ),
-              ),
-              ListTile(
-                title: Text(
-                  'Status',
-                  style: TextAppStyle.subTittel,
-                ),
-                subtitle: Text(
-                  process.isSynced ? 'Synced' : 'Not Synced',
-                  style: TextAppStyle.subMainTittel,
-                ),
-              ),
+              SizedBox(height: MediaQuery.of(context).padding.bottom),
             ],
           ),
         );
       },
     );
+  }
+
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 }

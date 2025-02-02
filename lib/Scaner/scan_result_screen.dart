@@ -142,6 +142,9 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
         });
 
         print('New image picked: ${_imageFile!.path}');
+
+        // Automatically start edge detection
+        await _detectAndCropDocument();
       }
     } catch (e) {
       print("Error picking image: $e");
@@ -250,15 +253,18 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
         if (processedFile.existsSync()) {
           final File newFile = await processedFile.copy(newPath);
 
+          // Automatically add the cropped image to the list
           setState(() {
-            _currentCroppedPath = newPath;
-            _croppedImage = newFile;
+            _croppedImages.add(newFile);
+            _imageFile = null;
+            _croppedImage = null;
+            _currentCroppedPath = null;
             _errorMessage = null;
           });
 
           await processedFile.delete();
 
-          print('Crop completed successfully: ${_croppedImage!.path}');
+          print('Crop completed and added to list: ${newFile.path}');
         } else {
           throw Exception('Processed file not found');
         }
@@ -400,31 +406,31 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
             SizedBox(height: 16.h),
 
             // Detect and crop button
-            ElevatedButton(
-              onPressed: _imageFile != null && !isProcessing ? _detectAndCropDocument : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColor.primeColor,
-                padding: EdgeInsets.symmetric(vertical: 12.h),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8.r),
-                ),
-              ),
-              child: isProcessing
-                  ? SizedBox(
-                height: 20.h,
-                width: 20.w,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2,
-                ),
-              )
-                  : Text(
-                _imageFile != null ? 'Detect and Crop' : 'Select an image first',
-                style: TextAppStyle.subTittel.copyWith(
-                  color: Colors.white,
-                ),
-              ),
-            ),
+            // ElevatedButton(
+            //   onPressed: _imageFile != null && !isProcessing ? _detectAndCropDocument : null,
+            //   style: ElevatedButton.styleFrom(
+            //     backgroundColor: AppColor.primeColor,
+            //     padding: EdgeInsets.symmetric(vertical: 12.h),
+            //     shape: RoundedRectangleBorder(
+            //       borderRadius: BorderRadius.circular(8.r),
+            //     ),
+            //   ),
+            //   child: isProcessing
+            //       ? SizedBox(
+            //     height: 20.h,
+            //     width: 20.w,
+            //     child: CircularProgressIndicator(
+            //       color: Colors.white,
+            //       strokeWidth: 2,
+            //     ),
+            //   )
+            //       : Text(
+            //     _imageFile != null ? 'Detect and Crop' : 'Select an image first',
+            //     style: TextAppStyle.subTittel.copyWith(
+            //       color: Colors.white,
+            //     ),
+            //   ),
+            // ),
 
             // List of cropped images
             if (_croppedImages.isNotEmpty) ...[
@@ -496,59 +502,59 @@ class _ScanResultScreenState extends State<ScanResultScreen> {
             ],
 
             // Current cropped image
-            if (_croppedImage != null) ...[
-              SizedBox(height: 24.h),
-              Text(
-                'Current Scan:',
-                style: TextAppStyle.subTittel.copyWith(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              SizedBox(height: 8.h),
-              Container(
-                height: 200.h,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12.r),
-                  border: Border.all(
-                    color: AppColor.primeColor,
-                    width: 1,
-                  ),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12.r),
-                  child: Image.file(
-                    _croppedImage!,
-                    fit: BoxFit.contain,
-                    key: ValueKey(_currentCroppedPath),
-                  ),
-                ),
-              ),
-              SizedBox(height: 16.h),
-              ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    _croppedImages.add(_croppedImage!);
-                    _imageFile = null;
-                    _croppedImage = null;
-                    _currentCroppedPath = null;
-                  });
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColor.primeColor,
-                  padding: EdgeInsets.symmetric(vertical: 12.h),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8.r),
-                  ),
-                ),
-                child: Text(
-                  'Add Image',
-                  style: TextAppStyle.subTittel.copyWith(
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
+            // if (_croppedImage != null) ...[
+            //   SizedBox(height: 24.h),
+            //   Text(
+            //     'Current Scan:',
+            //     style: TextAppStyle.subTittel.copyWith(
+            //       fontSize: 16.sp,
+            //       fontWeight: FontWeight.bold,
+            //     ),
+            //   ),
+            //   SizedBox(height: 8.h),
+            //   Container(
+            //     height: 200.h,
+            //     decoration: BoxDecoration(
+            //       borderRadius: BorderRadius.circular(12.r),
+            //       border: Border.all(
+            //         color: AppColor.primeColor,
+            //         width: 1,
+            //       ),
+            //     ),
+            //     child: ClipRRect(
+            //       borderRadius: BorderRadius.circular(12.r),
+            //       child: Image.file(
+            //         _croppedImage!,
+            //         fit: BoxFit.contain,
+            //         key: ValueKey(_currentCroppedPath),
+            //       ),
+            //     ),
+            //   ),
+            //   SizedBox(height: 16.h),
+            //   ElevatedButton(
+            //     onPressed: () {
+            //       setState(() {
+            //         _croppedImages.add(_croppedImage!);
+            //         _imageFile = null;
+            //         _croppedImage = null;
+            //         _currentCroppedPath = null;
+            //       });
+            //     },
+            //     style: ElevatedButton.styleFrom(
+            //       backgroundColor: AppColor.primeColor,
+            //       padding: EdgeInsets.symmetric(vertical: 12.h),
+            //       shape: RoundedRectangleBorder(
+            //         borderRadius: BorderRadius.circular(8.r),
+            //       ),
+            //     ),
+            //     child: Text(
+            //       'Add Image',
+            //       style: TextAppStyle.subTittel.copyWith(
+            //         color: Colors.white,
+            //       ),
+            //     ),
+            //   ),
+            // ],
           ],
         ),
       ),
